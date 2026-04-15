@@ -16,7 +16,6 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 from playwright.async_api import async_playwright
 import httpx
 import uvicorn
@@ -46,7 +45,6 @@ async def lifespan(app):
     log.info("Browser cerrado")
 
 app = FastAPI(title="FUBOL - Sin Popups", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
