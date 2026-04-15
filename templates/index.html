@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PelotaLibre — Sin Popups</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+    header {
+      background: #1a1f2e; border-bottom: 2px solid #2d6a4f;
+      padding: 14px 24px; display: flex; align-items: center; justify-content: space-between;
+    }
+    header h1 { font-size: 1.3rem; color: #4ade80; display: flex; align-items: center; gap: 8px; }
+    .dot { width: 10px; height: 10px; background: #ef4444; border-radius: 50%; display: inline-block; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .badge { background: #2d6a4f; color: #4ade80; font-size: .75rem; padding: 3px 10px; border-radius: 999px; }
+    main { max-width: 860px; margin: 0 auto; padding: 20px 16px; }
+    .controls { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; align-items: center; }
+    button {
+      background: #2d6a4f; color: #fff; border: none; padding: 10px 20px;
+      border-radius: 8px; cursor: pointer; font-size: .9rem; font-weight: 600; transition: background .2s;
+    }
+    button:hover { background: #40916c; }
+    button:disabled { background: #374151; cursor: not-allowed; color: #9ca3af; }
+    .search {
+      flex: 1; background: #1a1f2e; border: 1px solid #374151; color: #e2e8f0;
+      padding: 10px 14px; border-radius: 8px; font-size: .9rem; min-width: 200px;
+    }
+    .search:focus { outline: none; border-color: #2d6a4f; }
+    #status {
+      font-size: .85rem; color: #9ca3af; margin-bottom: 16px;
+      padding: 8px 12px; background: #1a1f2e; border-radius: 6px; border-left: 3px solid #2d6a4f;
+    }
+    #status.error { border-left-color: #ef4444; color: #fca5a5; }
+
+    /* Partidos */
+    .partido {
+      background: #1a1f2e; border: 1px solid #2a3042; border-radius: 10px;
+      margin-bottom: 12px; overflow: hidden;
+    }
+    .partido-header {
+      padding: 12px 16px; display: flex; align-items: center; gap: 12px; cursor: pointer;
+      transition: background .15s;
+    }
+    .partido-header:hover { background: #1f2640; }
+    .competicion {
+      font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+      padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+    }
+    .comp-libertadores { background: #422006; color: #fb923c; }
+    .comp-sudamericana { background: #1e3a5f; color: #60a5fa; }
+    .comp-other        { background: #1f2937; color: #9ca3af; }
+    .partido-nombre { font-size: .95rem; font-weight: 600; flex: 1; }
+    .hora { font-size: .85rem; color: #9ca3af; white-space: nowrap; }
+    .chevron { color: #4ade80; font-size: .8rem; transition: transform .2s; }
+    .chevron.open { transform: rotate(180deg); }
+
+    /* Opciones de canal */
+    .opciones { display: none; padding: 0 16px 14px; gap: 8px; flex-wrap: wrap; }
+    .opciones.open { display: flex; }
+    .opcion-btn {
+      background: #0f172a; border: 1px solid #2a3042; color: #e2e8f0;
+      padding: 7px 14px; border-radius: 6px; cursor: pointer;
+      font-size: .82rem; transition: border-color .15s, background .15s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .opcion-btn:hover { border-color: #4ade80; background: #1a2744; }
+    .opcion-canal { font-weight: 600; }
+    .opcion-calidad { font-size: .72rem; color: #4ade80; background: #0d2b1a; padding: 1px 5px; border-radius: 3px; }
+
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #4ade80; border-top-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .empty { text-align: center; color: #6b7280; padding: 60px 20px; }
+    .empty p { margin-top: 8px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1><span class="dot"></span> PelotaLibre — Sin Popups</h1>
+  <span class="badge" id="total-badge">0 partidos</span>
+</header>
+
+<main>
+  <div class="controls">
+    <button id="btn-cargar" onclick="cargarPartidos()">Cargar Partidos de Hoy</button>
+    <input class="search" type="text" id="buscar" placeholder="Buscar partido o competición..." oninput="filtrar()">
+  </div>
+  <div id="status">Presioná "Cargar Partidos de Hoy" para ver la agenda.</div>
+  <div id="lista">
+    <div class="empty"><div style="font-size:2rem">⚽</div><p>No hay partidos cargados aún.</p></div>
+  </div>
+</main>
+
+<script>
+let todos = [];
+
+async function cargarPartidos() {
+  const btn = document.getElementById('btn-cargar');
+  const status = document.getElementById('status');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Cargando...';
+  status.className = '';
+  status.textContent = 'Scrapeando agenda de pelotalibretv.su...';
+
+  try {
+    const resp = await fetch('/api/partidos');
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error);
+
+    todos = data.partidos;
+    document.getElementById('total-badge').textContent = `${data.total} partidos`;
+    status.textContent = `${data.total} partidos encontrados hoy.`;
+    renderPartidos(todos);
+  } catch(e) {
+    status.className = 'error';
+    status.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Recargar';
+  }
+}
+
+function filtrar() {
+  const q = document.getElementById('buscar').value.toLowerCase();
+  const filtrados = q
+    ? todos.filter(p => p.titulo.toLowerCase().includes(q) || (p.competicion||'').toLowerCase().includes(q))
+    : todos;
+  renderPartidos(filtrados);
+}
+
+function renderPartidos(partidos) {
+  const lista = document.getElementById('lista');
+  if (!partidos.length) {
+    lista.innerHTML = '<div class="empty"><div style="font-size:2rem">⚽</div><p>No se encontraron partidos.</p></div>';
+    return;
+  }
+  lista.innerHTML = partidos.map((p, i) => {
+    const comp = (p.competicion || '').toLowerCase();
+    const compClass = comp.includes('libertadores') ? 'comp-libertadores'
+                    : comp.includes('sudamericana') ? 'comp-sudamericana'
+                    : 'comp-other';
+    const opciones = (p.opciones || []).map(o => `
+      <button class="opcion-btn" data-url="${escHtml(o.url)}">
+        <span class="opcion-canal">${escHtml(o.canal)}</span>
+        ${o.calidad ? `<span class="opcion-calidad">${escHtml(o.calidad)}</span>` : ''}
+      </button>
+    `).join('');
+
+    return `
+      <div class="partido">
+        <div class="partido-header" onclick="toggleOpciones(${i})">
+          <span class="competicion ${compClass}">${escHtml(p.competicion || 'Fútbol')}</span>
+          <span class="partido-nombre">${escHtml(p.partido || p.titulo)}</span>
+          <span class="hora">${escHtml(p.hora)}</span>
+          <span class="chevron" id="chev-${i}">▼</span>
+        </div>
+        <div class="opciones" id="op-${i}">${opciones || '<span style="color:#6b7280;font-size:.85rem">Sin opciones disponibles</span>'}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleOpciones(i) {
+  const op = document.getElementById('op-' + i);
+  const chev = document.getElementById('chev-' + i);
+  op.classList.toggle('open');
+  chev.classList.toggle('open');
+}
+
+// Event delegation: un solo listener en el contenedor de partidos
+document.getElementById('lista').addEventListener('click', function(e) {
+  const btn = e.target.closest('.opcion-btn');
+  if (!btn) return;
+  e.stopPropagation();
+  const url = btn.dataset.url;
+  if (!url) return;
+  window.location.href = '/ver?url=' + encodeURIComponent(url);
+});
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

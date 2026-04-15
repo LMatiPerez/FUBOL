@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+debug_*.html
+*.log
+.env
+static/

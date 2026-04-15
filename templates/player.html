@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Viendo partido — PelotaLibre</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+    header {
+      background: #1a1f2e; border-bottom: 2px solid #2d6a4f;
+      padding: 12px 20px; display: flex; align-items: center; gap: 12px;
+    }
+    header a { color: #4ade80; text-decoration: none; font-size: 0.9rem; }
+    header h2 { font-size: 1rem; color: #e2e8f0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    main { max-width: 960px; margin: 0 auto; padding: 16px; }
+
+    #estado {
+      padding: 10px 14px; background: #1a1f2e; border-radius: 8px;
+      border-left: 3px solid #2d6a4f; margin-bottom: 14px; font-size: 0.9rem;
+    }
+    #estado.error { border-left-color: #ef4444; color: #fca5a5; }
+    #estado.ok    { border-left-color: #4ade80; color: #86efac; }
+
+    /* Player nativo HLS */
+    #video-wrapper {
+      display: none; background: #000; border-radius: 10px; overflow: hidden;
+      aspect-ratio: 16/9; margin-bottom: 14px;
+    }
+    #video-wrapper video { width: 100%; height: 100%; display: block; }
+
+    /* Iframe sandbox */
+    #iframe-wrapper {
+      display: none; position: relative; padding-top: 56.25%;
+      border-radius: 10px; overflow: hidden; background: #000; margin-bottom: 14px;
+    }
+    #iframe-wrapper iframe {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;
+    }
+
+    .spinner {
+      display: inline-block; width: 16px; height: 16px;
+      border: 2px solid #4ade80; border-top-color: transparent;
+      border-radius: 50%; animation: spin .7s linear infinite;
+      vertical-align: middle; margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<header>
+  <a href="/">← Volver</a>
+  <h2 id="titulo">Cargando...</h2>
+</header>
+
+<main>
+  <div id="estado"><span class="spinner"></span>Buscando stream...</div>
+
+  <div id="video-wrapper">
+    <video id="video" controls autoplay></video>
+  </div>
+
+  <div id="iframe-wrapper">
+    <iframe id="iframe"
+      sandbox="allow-scripts allow-same-origin allow-presentation"
+      allowfullscreen
+      referrerpolicy="no-referrer">
+    </iframe>
+  </div>
+</main>
+
+<script>
+const url = new URLSearchParams(location.search).get('url');
+let hls = null;
+
+if (!url) {
+  setEstado('error', 'No se especificó URL.');
+} else {
+  // Título desde la URL
+  const nombre = decodeURIComponent(url).split('/').pop().replace(/[?=&]/g, ' ').trim();
+  document.getElementById('titulo').textContent = nombre || 'Partido en vivo';
+  cargar(url);
+}
+
+async function cargar(partidoUrl) {
+  try {
+    const resp = await fetch('/api/stream?url=' + encodeURIComponent(partidoUrl));
+    const data = await resp.json();
+
+    if (!data.ok) throw new Error(data.error || 'Error desconocido');
+
+    if (data.m3u8) {
+      setEstado('ok', 'Stream encontrado. Reproduciendo...');
+      document.getElementById('video-wrapper').style.display = 'block';
+      // Si estamos en producción (no localhost), pasar por el proxy para evitar problemas de IP
+      const streamUrl = location.hostname === 'localhost'
+        ? data.m3u8
+        : `/api/proxy?url=${encodeURIComponent(data.m3u8)}`;
+      reproducirHLS(streamUrl);
+    } else if (data.iframe) {
+      setEstado('ok', 'Player cargado (sin popups).');
+      document.getElementById('iframe-wrapper').style.display = 'block';
+      document.getElementById('iframe').src = data.iframe;
+    } else {
+      setEstado('error', 'No se encontró stream. El partido puede no haber empezado aún.');
+    }
+
+  } catch(e) {
+    setEstado('error', 'Error: ' + e.message);
+  }
+}
+
+function reproducirHLS(url) {
+  const video = document.getElementById('video');
+  if (hls) { hls.destroy(); hls = null; }
+
+  if (Hls.isSupported()) {
+    hls = new Hls();
+    hls.loadSource(url);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+    hls.on(Hls.Events.ERROR, (_, d) => {
+      if (d.fatal) setEstado('error', 'Error HLS: ' + d.type + '. Probá con otro canal.');
+    });
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = url;
+    video.play().catch(() => {});
+  } else {
+    setEstado('error', 'Tu navegador no soporta HLS. Usá Chrome.');
+  }
+}
+
+function setEstado(tipo, msg) {
+  const el = document.getElementById('estado');
+  el.className = tipo;
+  el.textContent = msg;
+}
+</script>
+</body>
+</html>
