@@ -171,9 +171,40 @@ def _decodificar_evento_url(eventos_url: str) -> str | None:
         return None
 
 
+async def _extraer_iframes(page: Page) -> list[str]:
+    try:
+        return await page.evaluate(
+            "() => [...document.querySelectorAll('iframe')].map(f => f.src).filter(Boolean)"
+        )
+    except Exception:
+        return []
+
+
+async def _esperar_carga_stream(page: Page, streams_capturados: list[str], timeout_ms: int = 9000) -> list[str]:
+    """
+    Algunos players internos piden el m3u8 varios segundos despues del DOM load.
+    Esperamos un poco mas y revisamos iframes/html antes de dar por fallida la captura.
+    """
+    pasos = max(1, timeout_ms // 500)
+
+    for _ in range(pasos):
+        iframes = await _extraer_iframes(page)
+        if streams_capturados:
+            return iframes
+        await page.wait_for_timeout(500)
+
+    html = await page.content()
+    for m in M3U8_PATTERN.findall(html):
+        if m not in streams_capturados:
+            streams_capturados.append(m)
+
+    return await _extraer_iframes(page)
+
+
 async def get_stream_con_browser(browser, partido_url: str) -> dict:
     """Extrae el m3u8 usando el browser compartido (rápido, sin relanzar Playwright)."""
     streams_capturados = []
+    iframe_encontrado = None
 
     # Navegar por /eventos/ con Referer de pelotalibretv — latamvidz1 lo requiere
     ctx = await browser.new_context(extra_http_headers={
@@ -184,16 +215,37 @@ async def get_stream_con_browser(browser, partido_url: str) -> dict:
 
     def on_request(request):
         url = request.url
-        if ".m3u8" in url and url not in streams_capturados:
+        if ".m3u8" in url.lower() and url not in streams_capturados:
             log.info(f"  m3u8: {url[:80]}")
             streams_capturados.append(url)
 
     page.on("request", on_request)
 
     try:
-        log.info(f"Cargando: {partido_url}")
-        await page.goto(partido_url, wait_until="domcontentloaded", timeout=30000)
-        await page.wait_for_timeout(8000)
+        direct_url = _decodificar_evento_url(partido_url)
+        pendientes = []
+        visitados = set()
+
+        if direct_url:
+            pendientes.append(direct_url)
+        pendientes.append(partido_url)
+
+        while pendientes and not streams_capturados:
+            actual = pendientes.pop(0)
+            if not actual or actual in visitados:
+                continue
+
+            visitados.add(actual)
+            log.info(f"Cargando: {actual}")
+            await page.goto(actual, wait_until="domcontentloaded", timeout=30000)
+
+            iframes = await _esperar_carga_stream(page, streams_capturados, timeout_ms=9000)
+            if iframes and not iframe_encontrado:
+                iframe_encontrado = iframes[0]
+
+            for iframe_url in iframes:
+                if iframe_url not in visitados and iframe_url not in pendientes:
+                    pendientes.append(iframe_url)
 
         # También buscar m3u8 en el HTML renderizado
         html = await page.content()
@@ -201,19 +253,15 @@ async def get_stream_con_browser(browser, partido_url: str) -> dict:
             if m not in streams_capturados:
                 streams_capturados.append(m)
 
-        m3u8_real = next((s for s in streams_capturados if ".m3u8" in s), None)
-
-        iframes = await page.evaluate(
-            "() => [...document.querySelectorAll('iframe')].map(f => f.src).filter(Boolean)"
-        )
+        m3u8_real = next((s for s in streams_capturados if ".m3u8" in s.lower()), None)
 
         return {
             "m3u8": m3u8_real,
-            "iframe": iframes[0] if iframes else None,
+            "iframe": iframe_encontrado or direct_url,
         }
     except Exception as e:
         log.error(f"Error: {e}")
-        return {"m3u8": None, "iframe": None, "error": str(e)}
+        return {"m3u8": None, "iframe": iframe_encontrado, "error": str(e)}
     finally:
         await ctx.close()
 

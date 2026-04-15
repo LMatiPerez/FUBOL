@@ -15,10 +15,11 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from playwright.async_api import async_playwright
 import httpx
 import uvicorn
+from urllib.parse import quote, urljoin
 
 import scraper
 
@@ -94,7 +95,6 @@ async def proxy_stream(url: str = Query(...)):
     Proxy para m3u8 y segmentos TS.
     Todos los pedidos al CDN salen desde la IP del servidor (= IP del token).
     """
-    from urllib.parse import urljoin
     hdrs = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
         "Referer": "https://latamvidz1.com/",
@@ -103,34 +103,90 @@ async def proxy_stream(url: str = Query(...)):
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=20) as client:
             resp = await client.get(url, headers=hdrs)
-
-        ct = resp.headers.get("content-type", "application/octet-stream")
+            ct = resp.headers.get("content-type", "application/octet-stream")
+            body = await resp.aread()
 
         if "mpegurl" in ct or ".m3u8" in url:
             base = url.rsplit("/", 1)[0] + "/"
             lines = []
-            for line in resp.text.splitlines():
+            text = body.decode(resp.encoding or "utf-8", errors="ignore")
+            for line in text.splitlines():
                 stripped = line.strip()
                 if stripped and not stripped.startswith("#"):
                     seg = stripped if stripped.startswith("http") else urljoin(base, stripped)
-                    line = f"/api/proxy?url={seg}"
+                    line = f"/api/proxy?url={quote(seg, safe='')}"
                 lines.append(line)
-            body = "\n".join(lines).encode()
-            return StreamingResponse(
-                iter([body]),
+            playlist = "\n".join(lines).encode("utf-8")
+            return Response(
+                content=playlist,
+                status_code=resp.status_code,
                 media_type="application/vnd.apple.mpegurl",
-                headers={"Access-Control-Allow-Origin": "*"},
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Cache-Control": "no-store",
+                },
             )
 
         # Segmento TS u otro binario — stream directo
-        return StreamingResponse(
-            resp.aiter_bytes(),
+        return Response(
+            content=body,
+            status_code=resp.status_code,
             media_type=ct,
-            headers={"Access-Control-Allow-Origin": "*"},
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "no-store",
+            },
         )
     except Exception as e:
         log.error(f"Proxy error: {e}")
         return JSONResponse({"ok": False, "error": str(e)}, status_code=502)
+
+
+@app.get("/canal", response_class=HTMLResponse)
+async def canal_proxy(request: Request, stream: str = Query(...), titulo: str = Query("")):
+    """
+    Fetchea el player de latamvidz1.com pasando la IP real del usuario.
+    Así el token m3u8 queda asociado a la IP del usuario → el browser puede reproducir sin proxy.
+    """
+    # IP real del usuario (detrás de Render/proxy)
+    user_ip = request.headers.get("x-forwarded-for", request.client.host or "").split(",")[0].strip()
+
+    player_url = f"https://latamvidz1.com/canal.php?stream={stream}"
+    hdrs = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+        "Referer": "https://pelotalibretv.su/",
+        "Accept": "text/html,application/xhtml+xml,*/*;q=0.9",
+        "X-Forwarded-For": user_ip,
+        "X-Real-IP": user_ip,
+    }
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
+            resp = await client.get(player_url, headers=hdrs)
+        if resp.status_code != 200:
+            return HTMLResponse(f"<h2>Error {resp.status_code} al obtener el player</h2>", status_code=502)
+
+        # Limpiar ads del HTML original
+        import re as _re
+        html = resp.text
+        # Eliminar el script de popups de aclib
+        html = _re.sub(r'<script[^>]*aclib[^>]*>.*?</script>', '', html, flags=_re.DOTALL | _re.IGNORECASE)
+        html = _re.sub(r'aclib\.run\w+\([^)]*\);?', '', html)
+        # Arreglar protocolo relativo //cdn → https://cdn
+        html = html.replace('src="//', 'src="https://')
+
+        # Agregar nuestro topbar encima del player
+        topbar = f"""<div style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#1a1f2e;border-bottom:2px solid #2d6a4f;padding:9px 16px;display:flex;align-items:center;gap:12px">
+  <a href="/" style="color:#4ade80;text-decoration:none;font-weight:600;font-size:.9rem">← Volver</a>
+  <span style="color:#e2e8f0;font-size:.9rem">{titulo or stream.upper()}</span>
+</div>
+<div style="height:44px"></div>"""
+
+        html = html.replace("<body>", f"<body>{topbar}", 1)
+        return HTMLResponse(html)
+
+    except Exception as e:
+        log.error(f"Canal proxy error: {e}")
+        return HTMLResponse(f"<h2>Error: {e}</h2>", status_code=502)
 
 
 @app.get("/player", response_class=HTMLResponse)
