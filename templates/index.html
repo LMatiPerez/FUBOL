@@ -11,7 +11,7 @@
       background: #1a1f2e; border-bottom: 2px solid #2d6a4f;
       padding: 14px 24px; display: flex; align-items: center; justify-content: space-between;
     }
-    header h1 { font-size: 1.3rem; color: #4ade80; display: flex; align-items: center; gap: 8px; }
+    header h1 { font-size: 1.4rem; color: #4ade80; display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: .05em; }
     .dot { width: 10px; height: 10px; background: #ef4444; border-radius: 50%; display: inline-block; animation: pulse 1.5s infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
     .badge { background: #2d6a4f; color: #4ade80; font-size: .75rem; padding: 3px 10px; border-radius: 999px; }
@@ -34,40 +34,53 @@
     }
     #status.error { border-left-color: #ef4444; color: #fca5a5; }
 
+    /* Logo torneo (sprite de pelotalibretv) */
+    .torneo-logo {
+      width: 28px; height: 28px; flex-shrink: 0;
+      background-image: url('https://pelotalibretv.su/agenda/spriteupdate8.png');
+      background-repeat: no-repeat;
+      background-size: auto;
+      image-rendering: auto;
+    }
+
+    /* Escudo equipo */
+    .escudo {
+      width: 28px; height: 28px; flex-shrink: 0; border-radius: 50%;
+      background: #1f2937; display: flex; align-items: center; justify-content: center;
+      font-size: .6rem; font-weight: 700; color: #9ca3af; overflow: hidden;
+    }
+    .escudo img { width: 100%; height: 100%; object-fit: contain; }
+
+    .vs { font-size: .75rem; color: #6b7280; font-weight: 600; flex-shrink: 0; }
+
     /* Partidos */
     .partido {
       background: #1a1f2e; border: 1px solid #2a3042; border-radius: 10px;
-      margin-bottom: 12px; overflow: hidden;
+      margin-bottom: 10px; overflow: hidden;
     }
     .partido-header {
-      padding: 12px 16px; display: flex; align-items: center; gap: 12px; cursor: pointer;
+      padding: 10px 14px; display: flex; align-items: center; gap: 10px; cursor: pointer;
       transition: background .15s;
     }
     .partido-header:hover { background: #1f2640; }
-    .competicion {
-      font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
-      padding: 2px 8px; border-radius: 999px; white-space: nowrap;
-    }
-    .comp-libertadores { background: #422006; color: #fb923c; }
-    .comp-sudamericana { background: #1e3a5f; color: #60a5fa; }
-    .comp-other        { background: #1f2937; color: #9ca3af; }
-    .partido-nombre { font-size: .95rem; font-weight: 600; flex: 1; }
-    .hora { font-size: .85rem; color: #9ca3af; white-space: nowrap; }
-    .chevron { color: #4ade80; font-size: .8rem; transition: transform .2s; }
+    .partido-equipos { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+    .equipo-nombre { font-size: .88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+    .hora { font-size: .8rem; color: #9ca3af; white-space: nowrap; margin-left: auto; padding-left: 8px; }
+    .chevron { color: #4ade80; font-size: .75rem; transition: transform .2s; flex-shrink: 0; }
     .chevron.open { transform: rotate(180deg); }
 
-    /* Opciones de canal */
-    .opciones { display: none; padding: 0 16px 14px; gap: 8px; flex-wrap: wrap; }
+    /* Opciones canal */
+    .opciones { display: none; padding: 0 14px 12px; gap: 6px; flex-wrap: wrap; }
     .opciones.open { display: flex; }
     .opcion-btn {
       background: #0f172a; border: 1px solid #2a3042; color: #e2e8f0;
-      padding: 7px 14px; border-radius: 6px; cursor: pointer;
-      font-size: .82rem; transition: border-color .15s, background .15s;
-      display: flex; align-items: center; gap: 6px;
+      padding: 6px 12px; border-radius: 6px; cursor: pointer;
+      font-size: .8rem; transition: border-color .15s, background .15s;
+      display: flex; align-items: center; gap: 5px;
     }
     .opcion-btn:hover { border-color: #4ade80; background: #1a2744; }
     .opcion-canal { font-weight: 600; }
-    .opcion-calidad { font-size: .72rem; color: #4ade80; background: #0d2b1a; padding: 1px 5px; border-radius: 3px; }
+    .opcion-calidad { font-size: .68rem; color: #4ade80; background: #0d2b1a; padding: 1px 4px; border-radius: 3px; }
 
     .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #4ade80; border-top-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 6px; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -96,23 +109,77 @@
 <script>
 let todos = [];
 
+// Posiciones del sprite de pelotalibretv para cada torneo
+const SPRITE_POS = {
+  LIB:         '0 -380px',
+  SUD:         '-76px -304px',
+  CONCACAFCHA: '-38px -763px',
+  AFCCHA:      '0 -764px',
+  FIFA:        '0 -306px',
+  EURO:        '-38px -190px',
+  EUROCOPA:    '-75px -764px',
+  AMERICA:     '-76px -190px',
+  CON:         '-76px -570px',
+  CONGOLD:     '0 -723px',
+  CONNAT:      '-73px -687px',
+  AR:          '-76px -152px',
+  BRA:         '-38px -114px',
+  COL:         '0 0',
+  MEX:         '-38px 0',
+  ES:          '0 -38px',
+  PE:          '-38px -38px',
+  ENG:         '-76px 0',
+  IT:          '0 -114px',
+  FRA:         '-76px -38px',
+  USA:         '0 -76px',
+  URU:         '0 -190px',
+  CH:          '0 -152px',
+  BOL:         '-76px -608px',
+  PAR:         '0 -608px',
+  NBA:         '-38px -228px',
+  NFL:         '-76px -456px',
+  MLB:         '-38px -570px',
+  F1:          '-76px -266px',
+  MOTOGP:      '-76px -228px',
+  BOX:         '-76px -380px',
+  UFC:         '-38px -266px',
+  RUG:         '-76px -532px',
+  VOLEY:       '-38px -532px',
+};
+
+// Cache de escudos en localStorage
+const BADGE_CACHE = JSON.parse(localStorage.getItem('fubol_badges') || '{}');
+function saveBadgeCache() { localStorage.setItem('fubol_badges', JSON.stringify(BADGE_CACHE)); }
+
+async function fetchBadge(teamName) {
+  if (BADGE_CACHE[teamName] !== undefined) return BADGE_CACHE[teamName];
+  try {
+    const q = encodeURIComponent(teamName);
+    const resp = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${q}`);
+    const data = await resp.json();
+    const badge = data?.teams?.[0]?.strTeamBadge || null;
+    BADGE_CACHE[teamName] = badge;
+    saveBadgeCache();
+    return badge;
+  } catch { return null; }
+}
+
 async function cargarPartidos() {
   const btn = document.getElementById('btn-cargar');
   const status = document.getElementById('status');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>Cargando...';
   status.className = '';
-  status.textContent = 'Scrapeando agenda de pelotalibretv.su...';
+  status.textContent = 'Scrapeando agenda...';
 
   try {
     const resp = await fetch('/api/partidos');
     const data = await resp.json();
     if (!data.ok) throw new Error(data.error);
-
     todos = data.partidos;
     document.getElementById('total-badge').textContent = `${data.total} partidos`;
     status.textContent = `${data.total} partidos encontrados hoy.`;
-    renderPartidos(todos);
+    await renderPartidos(todos);
   } catch(e) {
     status.className = 'error';
     status.textContent = 'Error: ' + e.message;
@@ -130,17 +197,21 @@ function filtrar() {
   renderPartidos(filtrados);
 }
 
-function renderPartidos(partidos) {
+async function renderPartidos(partidos) {
   const lista = document.getElementById('lista');
   if (!partidos.length) {
     lista.innerHTML = '<div class="empty"><div style="font-size:2rem">⚽</div><p>No se encontraron partidos.</p></div>';
     return;
   }
+
+  // Render inicial rápido (sin escudos todavía)
   lista.innerHTML = partidos.map((p, i) => {
-    const comp = (p.competicion || '').toLowerCase();
-    const compClass = comp.includes('libertadores') ? 'comp-libertadores'
-                    : comp.includes('sudamericana') ? 'comp-sudamericana'
-                    : 'comp-other';
+    const [equipo1, equipo2] = parseEquipos(p.partido);
+    const spritePos = SPRITE_POS[p.torneo_cls] || null;
+    const torneo_logo = spritePos
+      ? `<div class="torneo-logo" style="background-position:${spritePos}" title="${escHtml(p.competicion)}"></div>`
+      : `<div style="width:28px;flex-shrink:0"></div>`;
+
     const opciones = (p.opciones || []).map(o => `
       <button class="opcion-btn" data-url="${escHtml(o.url)}">
         <span class="opcion-canal">${escHtml(o.canal)}</span>
@@ -151,33 +222,61 @@ function renderPartidos(partidos) {
     return `
       <div class="partido">
         <div class="partido-header" onclick="toggleOpciones(${i})">
-          <span class="competicion ${compClass}">${escHtml(p.competicion || 'Fútbol')}</span>
-          <span class="partido-nombre">${escHtml(p.partido || p.titulo)}</span>
+          ${torneo_logo}
+          <div class="partido-equipos">
+            <div class="escudo" id="badge-a-${i}"><span>${initials(equipo1)}</span></div>
+            <span class="equipo-nombre" title="${escHtml(equipo1)}">${escHtml(equipo1)}</span>
+            <span class="vs">vs</span>
+            <span class="equipo-nombre" title="${escHtml(equipo2)}">${escHtml(equipo2)}</span>
+            <div class="escudo" id="badge-b-${i}"><span>${initials(equipo2)}</span></div>
+          </div>
           <span class="hora">${escHtml(p.hora)}</span>
           <span class="chevron" id="chev-${i}">▼</span>
         </div>
-        <div class="opciones" id="op-${i}">${opciones || '<span style="color:#6b7280;font-size:.85rem">Sin opciones disponibles</span>'}</div>
+        <div class="opciones" id="op-${i}">${opciones || '<span style="color:#6b7280;font-size:.82rem;padding:4px 0">Sin opciones disponibles</span>'}</div>
       </div>
     `;
   }).join('');
+
+  // Event delegation para los botones de canal
+  lista.onclick = function(e) {
+    const btn = e.target.closest('.opcion-btn');
+    if (!btn) return;
+    e.stopPropagation();
+    const url = btn.dataset.url;
+    if (url) window.location.href = '/ver?url=' + encodeURIComponent(url);
+  };
+
+  // Cargar escudos en background (no bloquea el render)
+  partidos.forEach(async (p, i) => {
+    const [eq1, eq2] = parseEquipos(p.partido);
+    loadBadge(eq1, `badge-a-${i}`);
+    loadBadge(eq2, `badge-b-${i}`);
+  });
+}
+
+async function loadBadge(teamName, elId) {
+  if (!teamName) return;
+  const url = await fetchBadge(teamName);
+  const el = document.getElementById(elId);
+  if (url && el) {
+    el.innerHTML = `<img src="${url}/preview" alt="${escHtml(teamName)}" onerror="this.parentElement.innerHTML='<span>${initials(teamName)}</span>'">`;
+  }
+}
+
+function parseEquipos(partido) {
+  const parts = (partido || '').split(' vs ');
+  return [parts[0]?.trim() || '', parts[1]?.trim() || ''];
+}
+
+function initials(name) {
+  return (name || '').split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
 }
 
 function toggleOpciones(i) {
-  const op = document.getElementById('op-' + i);
-  const chev = document.getElementById('chev-' + i);
-  op.classList.toggle('open');
-  chev.classList.toggle('open');
+  document.getElementById('op-' + i).classList.toggle('open');
+  document.getElementById('chev-' + i).classList.toggle('open');
 }
-
-// Event delegation: un solo listener en el contenedor de partidos
-document.getElementById('lista').addEventListener('click', function(e) {
-  const btn = e.target.closest('.opcion-btn');
-  if (!btn) return;
-  e.stopPropagation();
-  const url = btn.dataset.url;
-  if (!url) return;
-  window.location.href = '/ver?url=' + encodeURIComponent(url);
-});
 
 function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');

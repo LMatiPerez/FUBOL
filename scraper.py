@@ -117,6 +117,9 @@ def _parsear_agenda(html: str) -> list[dict]:
         else:
             competicion, partido = "", titulo_completo
 
+        # Clase CSS original (LIB, SUD, CONCACAFCHA, etc.) para el sprite
+        torneo_cls = " ".join(li.get("class", []))
+
         # Opciones de canal (subitems)
         opciones = []
         for sub in li.select("li.subitem1 a"):
@@ -134,6 +137,7 @@ def _parsear_agenda(html: str) -> list[dict]:
             "partido": partido.strip(),
             "hora": hora,
             "opciones": opciones,
+            "torneo_cls": torneo_cls,
         })
 
     log.info(f"Encontrados {len(partidos)} partidos en agenda")
