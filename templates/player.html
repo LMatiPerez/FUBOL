@@ -6,76 +6,152 @@
   <title>FUBOL</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0f1117; color: #e2e8f0; font-family: 'Segoe UI', sans-serif;
-           min-height: 100vh; display: flex; flex-direction: column; }
-    header { background: #1a1f2e; border-bottom: 2px solid #2d6a4f;
-             padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
-    header a { color: #4ade80; text-decoration: none; font-size: .9rem; font-weight: 600; }
-    header h2 { font-size: 1rem; flex: 1; }
-    main { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px; padding: 40px 16px; }
-    #msg { font-size: .95rem; color: #9ca3af; text-align: center; }
+    body {
+      background: #0f1117;
+      color: #e2e8f0;
+      font-family: "Segoe UI", sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: #1a1f2e;
+      border-bottom: 2px solid #2d6a4f;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header a {
+      color: #4ade80;
+      text-decoration: none;
+      font-size: .9rem;
+      font-weight: 600;
+    }
+    header h2 {
+      font-size: 1rem;
+      flex: 1;
+    }
+    main {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 14px;
+      padding: 40px 16px;
+    }
+    #msg {
+      font-size: .95rem;
+      color: #9ca3af;
+      text-align: center;
+      max-width: 640px;
+      line-height: 1.5;
+    }
     #msg.error { color: #fca5a5; }
-    .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid #4ade80;
-               border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite;
-               vertical-align: middle; margin-right: 8px; }
+    .spinner {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border: 2px solid #4ade80;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
 <header>
-  <a href="/">← Volver</a>
-  <h2 id="titulo">Cargando...</h2>
+  <a href="/">Volver</a>
+  <h2 id="titulo">Buscando stream...</h2>
 </header>
 <main>
-  <div id="msg"><span class="spinner"></span>Abriendo player...</div>
+  <div id="msg"><span class="spinner"></span>Extrayendo stream, espera unos segundos...</div>
 </main>
 
 <script>
-const params  = new URLSearchParams(location.search);
-const eventoUrl = params.get('url');
+const eventoUrl = new URLSearchParams(location.search).get("url");
 
 if (!eventoUrl) {
-  setError('Sin URL de partido.');
+  setError("Sin URL de partido.");
 } else {
-  // Extraer stream name del base64 y redirigir directo al /canal
-  let stream = '', titulo = '';
-  try {
-    const b64 = new URL(eventoUrl).searchParams.get('r') || '';
-    const decoded = atob(b64.replace(/-/g,'+').replace(/_/g,'/'));
-    stream = new URL(decoded).searchParams.get('stream') || '';
-    titulo = stream.toUpperCase().replace(/[_-]/g, ' ');
-  } catch {}
+  buscarStream(eventoUrl);
+}
 
-  if (stream) {
-    // Redirigir al canal proxy — sin esperar Playwright
-    window.location.replace(`/canal?stream=${encodeURIComponent(stream)}&titulo=${encodeURIComponent(titulo)}`);
-  } else {
-    // Fallback: usar Playwright para extraer el iframe
-    buscarConPlaywright(eventoUrl);
+function decodificarStream(url) {
+  try {
+    const encoded = new URL(url).searchParams.get("r") || "";
+    const decoded = atob(encoded.replace(/-/g, "+").replace(/_/g, "/"));
+    return new URL(decoded).searchParams.get("stream") || "";
+  } catch {
+    return "";
   }
 }
 
-async function buscarConPlaywright(url) {
-  document.getElementById('titulo').textContent = 'Buscando stream...';
+function tituloDesdeStream(stream) {
+  return (stream || "").toUpperCase().replace(/[_-]/g, " ") || "En vivo";
+}
+
+async function buscarStream(url) {
+  const streamDecodificado = decodificarStream(url);
+  const titulo = tituloDesdeStream(streamDecodificado);
+  document.getElementById("titulo").textContent = titulo;
+
   try {
-    const resp = await fetch('/api/stream?url=' + encodeURIComponent(url));
+    const resp = await fetch("/api/stream?url=" + encodeURIComponent(url));
     const data = await resp.json();
-    if (data.iframe) {
-      const m = data.iframe.match(/stream=([^&]+)/);
-      const stream = m ? m[1] : '';
-      const titulo = stream.toUpperCase().replace(/[_-]/g, ' ');
-      window.location.replace(`/canal?stream=${encodeURIComponent(stream)}&titulo=${encodeURIComponent(titulo)}`);
-    } else {
-      setError('No se encontró el player para este partido.');
+
+    if (!resp.ok || !data.ok) {
+      throw new Error(data.error || `HTTP ${resp.status}`);
     }
-  } catch(e) {
-    setError('Error: ' + e.message);
+
+    if (data.m3u8) {
+      window.location.replace(
+        "/player?stream=" + encodeURIComponent(data.m3u8) +
+        "&titulo=" + encodeURIComponent(titulo)
+      );
+      return;
+    }
+
+    if (data.iframe) {
+      const iframeStream = extraerStreamDesdeUrl(data.iframe) || streamDecodificado;
+      if (iframeStream) {
+        window.location.replace(
+          "/canal?stream=" + encodeURIComponent(iframeStream) +
+          "&titulo=" + encodeURIComponent(tituloDesdeStream(iframeStream))
+        );
+        return;
+      }
+    }
+
+    if (streamDecodificado) {
+      window.location.replace(
+        "/canal?stream=" + encodeURIComponent(streamDecodificado) +
+        "&titulo=" + encodeURIComponent(titulo)
+      );
+      return;
+    }
+
+    setError("No se encontro un stream reproducible para este partido.");
+  } catch (error) {
+    setError("Error: " + (error.message || error));
+  }
+}
+
+function extraerStreamDesdeUrl(url) {
+  try {
+    return new URL(url, location.origin).searchParams.get("stream") || "";
+  } catch {
+    return "";
   }
 }
 
 function setError(msg) {
-  document.getElementById('msg').className = 'error';
-  document.getElementById('msg').textContent = msg;
+  document.getElementById("msg").className = "error";
+  document.getElementById("msg").textContent = msg;
 }
 </script>
 </body>
