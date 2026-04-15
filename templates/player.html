@@ -43,15 +43,30 @@ async function buscarStream() {
     const resp = await fetch('/api/stream?url=' + encodeURIComponent(eventoUrl));
     const data = await resp.json();
 
-    if (!data.ok || !data.m3u8) {
-      document.getElementById('msg').className = 'error';
-      document.getElementById('msg').textContent = 'No se encontró stream. Puede que el partido no haya empezado.';
+    const titulo = document.getElementById('titulo').textContent;
+
+    if (data.m3u8) {
+      // Player limpio con HLS.js + proxy
+      window.location.replace('/player?stream=' + encodeURIComponent(data.m3u8) + '&titulo=' + encodeURIComponent(titulo));
       return;
     }
 
-    // Redirigir al player limpio con el m3u8 ya capturado
-    const titulo = document.getElementById('titulo').textContent;
-    window.location.replace('/player?stream=' + encodeURIComponent(data.m3u8) + '&titulo=' + encodeURIComponent(titulo));
+    if (data.iframe) {
+      // Fallback: mostrar solo el iframe del player (no la página completa)
+      document.getElementById('msg').textContent = '';
+      document.body.innerHTML = `
+        <style>* {margin:0;padding:0;box-sizing:border-box} body {background:#000;display:flex;flex-direction:column;height:100vh}</style>
+        <div style="background:#1a1f2e;padding:10px 16px;display:flex;align-items:center;gap:12px;border-bottom:2px solid #2d6a4f">
+          <a href="/" style="color:#4ade80;text-decoration:none;font-weight:600;font-size:.9rem">← Volver</a>
+          <span style="color:#e2e8f0;font-size:.95rem">${titulo}</span>
+        </div>
+        <iframe src="${data.iframe}" style="flex:1;border:none;width:100%" allowfullscreen allow="autoplay;fullscreen"></iframe>
+      `;
+      return;
+    }
+
+    document.getElementById('msg').className = 'error';
+    document.getElementById('msg').textContent = 'No se encontró stream. Puede que el partido no haya empezado aún.';
 
   } catch(e) {
     document.getElementById('msg').className = 'error';

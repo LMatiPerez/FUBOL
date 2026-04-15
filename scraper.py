@@ -192,8 +192,8 @@ async def get_stream_con_browser(browser, partido_url: str) -> dict:
 
     try:
         log.info(f"Cargando: {partido_url}")
-        await page.goto(partido_url, wait_until="domcontentloaded", timeout=20000)
-        await page.wait_for_timeout(5000)
+        await page.goto(partido_url, wait_until="domcontentloaded", timeout=30000)
+        await page.wait_for_timeout(8000)
 
         # También buscar m3u8 en el HTML renderizado
         html = await page.content()
