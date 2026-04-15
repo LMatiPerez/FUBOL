@@ -91,29 +91,29 @@ async def api_stream(url: str = Query(...)):
 @app.get("/api/proxy")
 async def proxy_stream(url: str = Query(...)):
     """
-    Proxy del stream m3u8 para evitar problemas de IP/CORS.
-    El browser pide los segmentos a nuestro servidor, que los busca desde la IP del servidor.
+    Proxy para m3u8 y segmentos TS.
+    Todos los pedidos al CDN salen desde la IP del servidor (= IP del token).
     """
-    headers = {
+    from urllib.parse import urljoin
+    hdrs = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
-        "Referer": "https://pelotalibretv.su/",
-        "Origin": "https://pelotalibretv.su",
+        "Referer": "https://latamvidz1.com/",
+        "Origin": "https://latamvidz1.com",
     }
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
-            resp = await client.get(url, headers=headers)
+        async with httpx.AsyncClient(follow_redirects=True, timeout=20) as client:
+            resp = await client.get(url, headers=hdrs)
 
-        content_type = resp.headers.get("content-type", "application/octet-stream")
+        ct = resp.headers.get("content-type", "application/octet-stream")
 
-        # Si es m3u8, reescribir las URLs de segmentos para que también pasen por el proxy
-        if "mpegurl" in content_type or url.endswith(".m3u8"):
-            from urllib.parse import urljoin
+        if "mpegurl" in ct or ".m3u8" in url:
             base = url.rsplit("/", 1)[0] + "/"
             lines = []
             for line in resp.text.splitlines():
-                if line and not line.startswith("#"):
-                    seg_url = line if line.startswith("http") else urljoin(base, line)
-                    line = f"/api/proxy?url={httpx.URL(seg_url)}"
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#"):
+                    seg = stripped if stripped.startswith("http") else urljoin(base, stripped)
+                    line = f"/api/proxy?url={seg}"
                 lines.append(line)
             body = "\n".join(lines).encode()
             return StreamingResponse(
@@ -122,13 +122,74 @@ async def proxy_stream(url: str = Query(...)):
                 headers={"Access-Control-Allow-Origin": "*"},
             )
 
+        # Segmento TS u otro binario — stream directo
         return StreamingResponse(
             resp.aiter_bytes(),
-            media_type=content_type,
+            media_type=ct,
             headers={"Access-Control-Allow-Origin": "*"},
         )
     except Exception as e:
+        log.error(f"Proxy error: {e}")
         return JSONResponse({"ok": False, "error": str(e)}, status_code=502)
+
+
+@app.get("/player", response_class=HTMLResponse)
+async def player_page(stream: str = Query(...), titulo: str = Query("")):
+    """Página limpia con solo el video player (HLS.js) y botón de volver."""
+    html = f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{titulo or 'En vivo'} — FUBOL</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{ background: #000; color: #e2e8f0; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; height: 100vh; }}
+    header {{ background: #111; padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }}
+    header a {{ color: #4ade80; text-decoration: none; font-size: .9rem; font-weight: 600; }}
+    header h2 {{ font-size: .95rem; color: #e2e8f0; flex: 1; }}
+    #msg {{ padding: 8px 16px; font-size: .82rem; color: #9ca3af; background: #111; flex-shrink: 0; }}
+    #msg.error {{ color: #fca5a5; }}
+    video {{ flex: 1; width: 100%; background: #000; display: block; }}
+    .spinner {{ display: inline-block; width: 14px; height: 14px; border: 2px solid #4ade80;
+      border-top-color: transparent; border-radius: 50%; animation: spin .7s linear infinite;
+      vertical-align: middle; margin-right: 6px; }}
+    @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+  </style>
+</head>
+<body>
+<header>
+  <a href="/">← Volver</a>
+  <h2>{titulo or 'En vivo'}</h2>
+</header>
+<div id="msg"><span class="spinner"></span>Cargando stream...</div>
+<video id="v" controls autoplay playsinline></video>
+<script>
+const m3u8 = {repr(stream)};
+const proxyUrl = '/api/proxy?url=' + encodeURIComponent(m3u8);
+const video = document.getElementById('v');
+const msg = document.getElementById('msg');
+let hls;
+
+if (Hls.isSupported()) {{
+  hls = new Hls();
+  hls.loadSource(proxyUrl);
+  hls.attachMedia(video);
+  hls.on(Hls.Events.MANIFEST_PARSED, () => {{ msg.textContent = 'Reproduciendo'; video.play().catch(()=>{{}}); }});
+  hls.on(Hls.Events.ERROR, (_, d) => {{
+    if (d.fatal) {{ msg.className = 'error'; msg.textContent = 'Error de stream: ' + d.type; }}
+  }});
+}} else if (video.canPlayType('application/vnd.apple.mpegurl')) {{
+  video.src = proxyUrl;
+  video.play();
+}} else {{
+  msg.className = 'error'; msg.textContent = 'Tu navegador no soporta HLS. Usá Chrome.';
+}}
+</script>
+</body>
+</html>"""
+    return HTMLResponse(html)
 
 
 if __name__ == "__main__":

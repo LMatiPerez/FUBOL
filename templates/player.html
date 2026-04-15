@@ -6,71 +6,64 @@
   <title>FUBOL</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; display: flex; flex-direction: column; }
-    header {
-      background: #1a1f2e; border-bottom: 2px solid #2d6a4f;
-      padding: 12px 20px; display: flex; align-items: center; gap: 12px; flex-shrink: 0;
-    }
-    header a { color: #4ade80; text-decoration: none; font-size: 0.9rem; font-weight: 600; }
-    header h2 { font-size: 1rem; color: #e2e8f0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-    /* El iframe ocupa todo el espacio restante */
-    .player-container {
-      flex: 1;
-      position: relative;
-    }
-    .player-container iframe {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      border: none;
-    }
+    body { background: #0f1117; color: #e2e8f0; font-family: 'Segoe UI', sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+    header { background: #1a1f2e; border-bottom: 2px solid #2d6a4f; padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
+    header a { color: #4ade80; text-decoration: none; font-size: .9rem; font-weight: 600; }
+    header h2 { font-size: 1rem; flex: 1; }
+    main { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; padding: 40px 16px; }
+    #msg { font-size: .95rem; color: #9ca3af; text-align: center; }
+    #msg.error { color: #fca5a5; }
+    .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid #4ade80;
+      border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite;
+      vertical-align: middle; margin-right: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
-
 <header>
   <a href="/">← Volver</a>
-  <h2 id="titulo">Cargando...</h2>
+  <h2 id="titulo">Buscando stream...</h2>
 </header>
-
-<div class="player-container">
-  <iframe
-    id="player"
-    allowfullscreen
-    allow="autoplay; fullscreen; picture-in-picture"
-    referrerpolicy="no-referrer-when-downgrade">
-  </iframe>
-</div>
+<main>
+  <div id="msg"><span class="spinner"></span>Extrayendo stream, esperá unos segundos...</div>
+</main>
 
 <script>
-const url = new URLSearchParams(location.search).get('url');
+const eventoUrl = new URLSearchParams(location.search).get('url');
 
-if (url) {
-  // Título desde el stream name
+// Título desde la URL
+try {
+  const decoded = atob(new URL(eventoUrl).searchParams.get('r') || '');
+  const stream = new URL(decoded).searchParams.get('stream') || '';
+  document.getElementById('titulo').textContent = stream.toUpperCase().replace(/[_-]/g, ' ') || 'En vivo';
+} catch { document.getElementById('titulo').textContent = 'En vivo'; }
+
+async function buscarStream() {
   try {
-    const decoded = atob(new URL(url).searchParams.get('r') || '');
-    const stream = new URL(decoded).searchParams.get('stream') || '';
-    document.getElementById('titulo').textContent = stream.toUpperCase().replace(/[_-]/g, ' ') || 'En vivo';
-  } catch {
-    document.getElementById('titulo').textContent = 'En vivo';
-  }
+    const resp = await fetch('/api/stream?url=' + encodeURIComponent(eventoUrl));
+    const data = await resp.json();
 
-  document.getElementById('player').src = url;
-} else {
-  document.getElementById('titulo').textContent = 'Error: sin URL';
+    if (!data.ok || !data.m3u8) {
+      document.getElementById('msg').className = 'error';
+      document.getElementById('msg').textContent = 'No se encontró stream. Puede que el partido no haya empezado.';
+      return;
+    }
+
+    // Redirigir al player limpio con el m3u8 ya capturado
+    const titulo = document.getElementById('titulo').textContent;
+    window.location.replace('/player?stream=' + encodeURIComponent(data.m3u8) + '&titulo=' + encodeURIComponent(titulo));
+
+  } catch(e) {
+    document.getElementById('msg').className = 'error';
+    document.getElementById('msg').textContent = 'Error: ' + e.message;
+  }
 }
 
-// Interceptar cualquier intento del iframe de redirigir la página principal
-window.addEventListener('beforeunload', (e) => {
-  if (document.activeElement === document.getElementById('player')) {
-    e.preventDefault();
-    return '';
-  }
-});
-
-// Bloquear window.open desde el iframe (los popups de ads)
-window.open = () => null;
+if (eventoUrl) buscarStream();
+else {
+  document.getElementById('msg').className = 'error';
+  document.getElementById('msg').textContent = 'Sin URL de partido.';
+}
 </script>
 </body>
 </html>
