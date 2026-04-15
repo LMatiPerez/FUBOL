@@ -1,5 +1,5 @@
 """
-API + Servidor web para PelotaLibre TV sin popups
+API + Servidor web para FUBOL TV sin popups
 ===================================================
 Endpoints:
   GET /                    → Página principal con lista de partidos
@@ -45,7 +45,7 @@ async def lifespan(app):
     await _pw.stop()
     log.info("Browser cerrado")
 
-app = FastAPI(title="PelotaLibre - Sin Popups", lifespan=lifespan)
+app = FastAPI(title="FUBOL - Sin Popups", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
