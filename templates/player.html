@@ -6,82 +6,76 @@
   <title>FUBOL</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0f1117; color: #e2e8f0; font-family: 'Segoe UI', sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
-    header { background: #1a1f2e; border-bottom: 2px solid #2d6a4f; padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
+    body { background: #0f1117; color: #e2e8f0; font-family: 'Segoe UI', sans-serif;
+           min-height: 100vh; display: flex; flex-direction: column; }
+    header { background: #1a1f2e; border-bottom: 2px solid #2d6a4f;
+             padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
     header a { color: #4ade80; text-decoration: none; font-size: .9rem; font-weight: 600; }
     header h2 { font-size: 1rem; flex: 1; }
-    main { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; padding: 40px 16px; }
+    main { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px; padding: 40px 16px; }
     #msg { font-size: .95rem; color: #9ca3af; text-align: center; }
     #msg.error { color: #fca5a5; }
     .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid #4ade80;
-      border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite;
-      vertical-align: middle; margin-right: 8px; }
+               border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite;
+               vertical-align: middle; margin-right: 8px; }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
 <header>
   <a href="/">← Volver</a>
-  <h2 id="titulo">Buscando stream...</h2>
+  <h2 id="titulo">Cargando...</h2>
 </header>
 <main>
-  <div id="msg"><span class="spinner"></span>Extrayendo stream, esperá unos segundos...</div>
+  <div id="msg"><span class="spinner"></span>Abriendo player...</div>
 </main>
 
 <script>
-const eventoUrl = new URLSearchParams(location.search).get('url');
+const params  = new URLSearchParams(location.search);
+const eventoUrl = params.get('url');
 
-// Título desde la URL
-try {
-  const decoded = atob(new URL(eventoUrl).searchParams.get('r') || '');
-  const stream = new URL(decoded).searchParams.get('stream') || '';
-  document.getElementById('titulo').textContent = stream.toUpperCase().replace(/[_-]/g, ' ') || 'En vivo';
-} catch { document.getElementById('titulo').textContent = 'En vivo'; }
-
-async function buscarStream() {
+if (!eventoUrl) {
+  setError('Sin URL de partido.');
+} else {
+  // Extraer stream name del base64 y redirigir directo al /canal
+  let stream = '', titulo = '';
   try {
-    const resp = await fetch('/api/stream?url=' + encodeURIComponent(eventoUrl));
-    const data = await resp.json();
+    const b64 = new URL(eventoUrl).searchParams.get('r') || '';
+    const decoded = atob(b64.replace(/-/g,'+').replace(/_/g,'/'));
+    stream = new URL(decoded).searchParams.get('stream') || '';
+    titulo = stream.toUpperCase().replace(/[_-]/g, ' ');
+  } catch {}
 
-    const titulo = document.getElementById('titulo').textContent;
-
-    if (data.m3u8) {
-      // Player limpio con HLS.js + proxy
-      window.location.replace('/player?stream=' + encodeURIComponent(data.m3u8) + '&titulo=' + encodeURIComponent(titulo));
-      return;
-    }
-
-    if (data.iframe) {
-      const fallbackUrl = eventoUrl.includes('pelotalibretv.su/eventos/')
-        ? eventoUrl
-        : data.iframe;
-
-      // Fallback: mostrar el origen cuando conviene conservar el referer
-      document.getElementById('msg').textContent = '';
-      document.body.innerHTML = `
-        <style>* {margin:0;padding:0;box-sizing:border-box} body {background:#000;display:flex;flex-direction:column;height:100vh}</style>
-        <div style="background:#1a1f2e;padding:10px 16px;display:flex;align-items:center;gap:12px;border-bottom:2px solid #2d6a4f">
-          <a href="/" style="color:#4ade80;text-decoration:none;font-weight:600;font-size:.9rem">← Volver</a>
-          <span style="color:#e2e8f0;font-size:.95rem">${titulo}</span>
-        </div>
-        <iframe src="${fallbackUrl}" style="flex:1;border:none;width:100%" allowfullscreen allow="autoplay;fullscreen"></iframe>
-      `;
-      return;
-    }
-
-    document.getElementById('msg').className = 'error';
-    document.getElementById('msg').textContent = 'No se encontró stream. Puede que el partido no haya empezado aún.';
-
-  } catch(e) {
-    document.getElementById('msg').className = 'error';
-    document.getElementById('msg').textContent = 'Error: ' + e.message;
+  if (stream) {
+    // Redirigir al canal proxy — sin esperar Playwright
+    window.location.replace(`/canal?stream=${encodeURIComponent(stream)}&titulo=${encodeURIComponent(titulo)}`);
+  } else {
+    // Fallback: usar Playwright para extraer el iframe
+    buscarConPlaywright(eventoUrl);
   }
 }
 
-if (eventoUrl) buscarStream();
-else {
+async function buscarConPlaywright(url) {
+  document.getElementById('titulo').textContent = 'Buscando stream...';
+  try {
+    const resp = await fetch('/api/stream?url=' + encodeURIComponent(url));
+    const data = await resp.json();
+    if (data.iframe) {
+      const m = data.iframe.match(/stream=([^&]+)/);
+      const stream = m ? m[1] : '';
+      const titulo = stream.toUpperCase().replace(/[_-]/g, ' ');
+      window.location.replace(`/canal?stream=${encodeURIComponent(stream)}&titulo=${encodeURIComponent(titulo)}`);
+    } else {
+      setError('No se encontró el player para este partido.');
+    }
+  } catch(e) {
+    setError('Error: ' + e.message);
+  }
+}
+
+function setError(msg) {
   document.getElementById('msg').className = 'error';
-  document.getElementById('msg').textContent = 'Sin URL de partido.';
+  document.getElementById('msg').textContent = msg;
 }
 </script>
 </body>
