@@ -201,13 +201,42 @@ async def player_page(stream: str = Query(...), titulo: str = Query("")):
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
   <style>
     * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-    body {{ background: #000; color: #e2e8f0; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; height: 100vh; }}
-    header {{ background: #111; padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }}
+    html, body {{ height: 100%; overflow: hidden; }}
+    body {{
+      background: #000;
+      color: #e2e8f0;
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }}
+    header {{
+      background: #111;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex: 0 0 auto;
+    }}
     header a {{ color: #4ade80; text-decoration: none; font-size: .9rem; font-weight: 600; }}
-    header h2 {{ font-size: .95rem; color: #e2e8f0; flex: 1; }}
-    #msg {{ padding: 8px 16px; font-size: .82rem; color: #9ca3af; background: #111; flex-shrink: 0; }}
+    header h2 {{ font-size: .95rem; color: #e2e8f0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+    #msg {{
+      padding: 8px 16px;
+      font-size: .82rem;
+      color: #9ca3af;
+      background: #111;
+      flex: 0 0 auto;
+    }}
     #msg.error {{ color: #fca5a5; }}
-    video {{ flex: 1; width: 100%; background: #000; display: block; }}
+    video {{
+      flex: 1 1 auto;
+      min-height: 0;
+      width: 100%;
+      max-width: 100%;
+      background: #000;
+      display: block;
+      object-fit: contain;
+    }}
     .spinner {{ display: inline-block; width: 14px; height: 14px; border: 2px solid #4ade80;
       border-top-color: transparent; border-radius: 50%; animation: spin .7s linear infinite;
       vertical-align: middle; margin-right: 6px; }}
