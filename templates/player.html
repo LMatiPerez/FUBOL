@@ -37,8 +37,8 @@
 <div class="player-container">
   <iframe
     id="player"
-    sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"
     allowfullscreen
+    allow="autoplay; fullscreen; picture-in-picture"
     referrerpolicy="no-referrer-when-downgrade">
   </iframe>
 </div>
@@ -47,7 +47,7 @@
 const url = new URLSearchParams(location.search).get('url');
 
 if (url) {
-  // Mostrar nombre del stream en el título
+  // Título desde el stream name
   try {
     const decoded = atob(new URL(url).searchParams.get('r') || '');
     const stream = new URL(decoded).searchParams.get('stream') || '';
@@ -56,11 +56,21 @@ if (url) {
     document.getElementById('titulo').textContent = 'En vivo';
   }
 
-  // Cargar la página del partido directo en el iframe — sandbox bloquea los popups
   document.getElementById('player').src = url;
 } else {
   document.getElementById('titulo').textContent = 'Error: sin URL';
 }
+
+// Interceptar cualquier intento del iframe de redirigir la página principal
+window.addEventListener('beforeunload', (e) => {
+  if (document.activeElement === document.getElementById('player')) {
+    e.preventDefault();
+    return '';
+  }
+});
+
+// Bloquear window.open desde el iframe (los popups de ads)
+window.open = () => null;
 </script>
 </body>
 </html>
